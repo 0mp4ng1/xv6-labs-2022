@@ -702,3 +702,18 @@ void procdump(void)
     printf("\n");
   }
 }
+
+// count the number of processes
+int nproc(void)
+{
+  struct proc *p;
+  int cnt = 0;
+
+  for (p = proc; p < &proc[NPROC]; p++)
+  {
+    if (p->state != UNUSED)
+      cnt++;
+  }
+
+  return cnt;
+}

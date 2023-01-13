@@ -91,8 +91,8 @@ void usertrap(void)
         p->alarm_passed_ticks = 0;
         p->ishandler = 1;
       }
-      yield();
     }
+    yield();
   }
   usertrapret();
 }

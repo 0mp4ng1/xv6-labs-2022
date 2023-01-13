@@ -84,16 +84,16 @@ void usertrap(void)
     if (p->alarm_interval)
     {
       p->alarm_passed_ticks++;
-      if (p->alarm_passed_ticks == p->alarm_interval)
+      if (p->alarm_passed_ticks == p->alarm_interval && !(p->ishandler))
       {
         memmove(p->alarmframe, p->trapframe, sizeof(struct trapframe));
         p->trapframe->epc = p->alarm_handler;
-        // printf("%s : %d (%d ticks, %d interval, %p handler)\n", p->name, p->pid, p->alarm_passed_ticks, p->alarm_interval, p->alarm_handler);
+        p->alarm_passed_ticks = 0;
+        p->ishandler = 1;
       }
       yield();
     }
   }
-
   usertrapret();
 }
 

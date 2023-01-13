@@ -114,6 +114,8 @@ struct proc
   int alarm_passed_ticks;       // how many ticks have passed since the last call to a process's alarm handler
   struct trapframe *alarmframe; // the trapframe to save and restore registers
 
+  int ishandler; // true if handler hasn't returned
+
   // these are private to the process, so p->lock need not be held.
   uint64 kstack;               // Virtual address of kernel stack
   uint64 sz;                   // Size of process memory (bytes)

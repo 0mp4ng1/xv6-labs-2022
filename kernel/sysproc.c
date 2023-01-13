@@ -115,7 +115,8 @@ uint64
 sys_sigreturn(void)
 {
   struct proc *p = myproc();
-  p->alarm_passed_ticks = 0;
   memmove(p->trapframe, p->alarmframe, sizeof(struct trapframe));
-  return 0;
+  p->alarm_passed_ticks = 0;
+  p->ishandler = 0;
+  return p->trapframe->a0;
 }

@@ -9,17 +9,17 @@
 // routines.  The (higher-level) system call implementations
 // are in sysfile.c.
 
+#include "types.h"
+#include "riscv.h"
+#include "defs.h"
+#include "param.h"
+#include "stat.h"
+#include "spinlock.h"
+#include "proc.h"
+#include "sleeplock.h"
 #include "fs.h"
 #include "buf.h"
-#include "defs.h"
 #include "file.h"
-#include "param.h"
-#include "proc.h"
-#include "riscv.h"
-#include "sleeplock.h"
-#include "spinlock.h"
-#include "stat.h"
-#include "types.h"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 // there should be one superblock per disk device, but we run with
@@ -381,7 +381,6 @@ static uint bmap(struct inode *ip, uint bn)
 {
   uint addr, *a;
   struct buf *bp;
-  printf("Start\n");
 
   if (bn < NDIRECT)
   {
@@ -392,10 +391,10 @@ static uint bmap(struct inode *ip, uint bn)
         return 0;
       ip->addrs[bn] = addr;
     }
-    printf("Done direct\n");
 
     return addr;
   }
+
   bn -= NDIRECT;
 
   if (bn < NSINDIRECT)
@@ -420,7 +419,6 @@ static uint bmap(struct inode *ip, uint bn)
       }
     }
     brelse(bp);
-    printf("Done single\n");
 
     return addr;
   }
@@ -437,19 +435,26 @@ static uint bmap(struct inode *ip, uint bn)
         return 0;
       ip->addrs[NDIRECT + 1] = addr;
     }
+    bp = bread(ip->dev, addr);
+    a = (uint *)bp->data;
 
     // Load Second indirect block
     int bn2 = bn / NSINDIRECT;
-    if ((addr = ip->addrs[bn2]) == 0)
+    if ((addr = a[bn2]) == 0)
     {
       addr = balloc(ip->dev);
-      if (addr == 0)
-        return 0;
-      ip->addrs[bn2] = addr;
+      if (addr)
+      {
+        a[bn2] = addr;
+        log_write(bp);
+      }
     }
+    brelse(bp);
 
     bp = bread(ip->dev, addr);
     a = (uint *)bp->data;
+
+    // Find disk block
     int dn = bn % NSINDIRECT; // Get Indirect Block Number (0 or 1)
     if ((addr = a[dn]) == 0)
     {
@@ -461,7 +466,6 @@ static uint bmap(struct inode *ip, uint bn)
       }
     }
     brelse(bp);
-    printf("Done double\n");
 
     return addr;
   }

@@ -266,6 +266,8 @@ create(char *path, short type, short major, short minor)
   {
     iunlockput(dp);
     ilock(ip);
+    if (type == T_SYMLINK)
+      return ip;
     if (type == T_FILE && (ip->type == T_FILE || ip->type == T_DEVICE))
       return ip;
     iunlockput(ip);
@@ -354,6 +356,38 @@ sys_open(void)
     }
   }
 
+  if (ip->type == T_SYMLINK)
+  {
+    if (!(omode & O_NOFOLLOW))
+    {
+
+      int i = 0;
+
+      // if symlink : recursive get path until 10
+      while (ip->type == T_SYMLINK)
+      {
+        if (i == 10)
+        {
+          end_op();
+          return -1;
+        }
+        int len = 0;
+        readi(ip, 0, (uint64)&len, 0, sizeof(len));
+        readi(ip, 0, (uint64)path, sizeof(len), len + 1);
+
+        iunlockput(ip);
+
+        if ((ip = namei(path)) == 0)
+        {
+          end_op();
+          return -1;
+        }
+        ilock(ip);
+        i++;
+      }
+    }
+  }
+
   if (ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV))
   {
     iunlockput(ip);
@@ -388,29 +422,6 @@ sys_open(void)
   {
     itrunc(ip);
   }
-
-  // if (ip->type == T_SYMLINK)
-  // {
-  //   if (!(omode & O_NOFOLLOW))
-  //   {
-  //     int len = 0;
-  //     readi(ip, 0, (uint64)&len, 0, sizeof(len));
-  //     readi(ip, 0, (uint64)path, sizeof(len), len + 1);
-
-  //     if ((ip = namei(path)) == 0)
-  //     {
-  //       end_op();
-  //       return -1;
-  //     }
-  //     ilock(ip);
-  //     if (ip->type == T_DIR && omode != O_RDONLY)
-  //     {
-  //       iunlockput(ip);
-  //       end_op();
-  //       return -1;
-  //     }
-  //   }
-  // }
 
   iunlock(ip);
   end_op();
@@ -577,28 +588,13 @@ uint64 sys_symlink(void)
     end_op();
     return -1;
   }
-  printf("%s\n", from);
-  printf("%s\n", to);
 
   int len = strlen(from);
   writei(ip, 0, (uint64)&len, 0, sizeof(len));
   writei(ip, 0, (uint64)from, sizeof(len), len + 1);
 
-  iunlockput(ip);
   iupdate(ip);
-
-  // char path[MAXPATH];
-  // int len_;
-  // readi(ip, 0, (uint64)&len_, 0, sizeof(len));
-  // readi(ip, 0, (uint64)path, sizeof(len), len + 1);
-
-  // printf("dev: %d\n", ip->dev);
-  // printf("inum: %d\n", ip->inum);
-  // printf("ref: %d\n", ip->ref);
-  // printf("valid: %d\n", ip->valid);
-  // printf("type: %d\n", ip->type);
-  // printf("len: %d\n", len_);
-  // printf("path: %s\n", path);
+  iunlockput(ip);
 
   end_op();
 

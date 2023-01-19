@@ -43,7 +43,6 @@ ping(uint16 sport, uint16 dport, int attempts)
     fprintf(2, "ping: recv() failed\n");
     exit(1);
   }
-  printf("Done receiving packets\n");
 
   close(fd);
   ibuf[cc] = '\0';

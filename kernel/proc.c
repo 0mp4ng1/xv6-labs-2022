@@ -301,6 +301,7 @@ int fork(void)
     release(&np->lock);
     return -1;
   }
+
   np->sz = p->sz;
 
   // copy saved user registers.
@@ -316,6 +317,15 @@ int fork(void)
   np->cwd = idup(p->cwd);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
+
+  for (int idx = 0; idx < MAXMMAP; idx++)
+  {
+    if (p->vma[idx].isUsed)
+    {
+      memmove(&np->vma[idx], &p->vma[idx], sizeof(struct vma));
+      filedup(p->vma[idx].file);
+    }
+  }
 
   pid = np->pid;
 

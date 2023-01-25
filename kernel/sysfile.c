@@ -619,13 +619,18 @@ sys_munmap(void)
         iunlock(p->vma[i].file->ip);
         end_op();
       }
-      uvmunmap(p->pagetable, addr, length / PGSIZE, 1);
+
+      pte_t *pte;
+      if ((pte = walk(p->pagetable, addr, 0)))
+        if (*pte & PTE_V)
+          uvmunmap(p->pagetable, addr, length / PGSIZE, 1);
 
       if (addr == p->vma[i].addr)
       {
+        // If munmap removes all pages of a previous mmap,
+        // it should decrement the reference count of the corresponding struct file.
         if (p->vma[i].end == addr + length)
         {
-          // If munmap removes all pages of a previous mmap, it should decrement the reference count of the corresponding struct file.
           fileddown(p->vma[i].file);
           p->vma[i].isUsed = 0;
         }

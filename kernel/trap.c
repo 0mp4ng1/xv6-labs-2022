@@ -78,40 +78,44 @@ void usertrap(void)
     uint64 addr = PGROUNDDOWN(r_stval());
 
     if ((pte = walk(p->pagetable, addr, 0)) == 0)
-    {
-      printf("cow_handler: pte should exist");
-      setkilled(p);
-      goto end;
-    }
+      panic("cow_handler: pte should exist");
 
-    if ((*pte & PTE_V) && (*pte & PTE_U) && (*pte & PTE_COW))
+    if (((*pte & PTE_W) == 0) && (*pte & PTE_COW) && (*pte & PTE_V) && (*pte & PTE_U))
     {
       pa = PTE2PA(*pte);
-      flags = PTE_FLAGS(*pte);
-      flags &= (~PTE_COW);
-      flags |= PTE_W;
-
-      // printf("1 cow_handler: PTE_V : %d, PTE_U : %d, PTE_COW : %d, PTE_W : %d\n", (*pte & PTE_V), (*pte & PTE_U), (*pte & PTE_COW), (*pte & PTE_W));
       if ((mem = kalloc()) == 0)
         panic("cow_handler: kalloc error");
 
       memmove(mem, (char *)pa, PGSIZE);
-      uvmunmap(p->pagetable, addr, 1, 0);
-      decRefcnt((void *)pa);
-      // incRefcnt((void *)mem);
+
+      *pte |= PTE_W;
+      *pte &= (~PTE_COW);
+      // *pte &= (~PTE_V);
+
+      flags = PTE_FLAGS(*pte);
+
+      uvmunmap(p->pagetable, addr, 1, 1);
 
       if (mappages(p->pagetable, addr, PGSIZE, (uint64)mem, flags) != 0)
       {
-        decRefcnt(mem);
-        setkilled(p);
-        panic("cow_handler: mappages error");
+        initRefcnt(mem);
+        kfree(mem);
+        exit(-1);
       }
-      // printf("2 cow_handler: PTE_V : %d, PTE_U : %d, PTE_COW : %d, PTE_W : %d\n", (*pte & PTE_V), (*pte & PTE_U), (*pte & PTE_COW), (*pte & PTE_W));
+
+      // kfree((void *)pa);
     }
-  end:
+    else
+      exit(-1);
   }
   else
   {
+    // uint64 addr = PGROUNDDOWN(r_stval());
+    // pte_t *pte;
+    // pte = walk(p->pagetable, addr, 0);
+    // uint64 pa = PTE2PA(*pte);
+
+    // printRefcnt((void *)pa);
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     setkilled(p);
@@ -188,6 +192,13 @@ void kerneltrap()
 
   if ((which_dev = devintr()) == 0)
   {
+    // uint64 addr = PGROUNDDOWN(r_stval());
+    // pte_t *pte;
+    // pte = walk(myproc()->pagetable, addr, 0);
+    // uint64 pa = PTE2PA(*pte);
+    // printf("%s\n", myproc()->name);
+    // printRefcnt((void *)pa);
+
     printf("scause %p\n", scause);
     printf("sepc=%p stval=%p\n", r_sepc(), r_stval());
     panic("kerneltrap");

@@ -9,19 +9,21 @@
 #include "riscv.h"
 #include "defs.h"
 
-#define PGCNT (1L << 15)
+#define PGCNT ((PHYSTOP - KERNBASE) / PGSIZE)
 
 void freerange(void *pa_start, void *pa_end);
 
 extern char end[]; // first address after kernel.
-                   // defined by kernel.ld.
+// defined by kernel.ld.
+
+// int init = 0;
 
 struct run
 {
   struct run *next;
 };
 
-struct
+static struct
 {
   struct spinlock lock;
   struct run *freelist;
@@ -42,11 +44,18 @@ void freerange(void *pa_start, void *pa_end)
     kfree(p);
 }
 
+void printRefcnt(void *pa)
+{
+  int pageidx = (PGROUNDDOWN((uint64)pa) - KERNBASE) / PGSIZE;
+  printf("page %d's refcnt: %d\n", pageidx, kmem.refcnt[pageidx]);
+}
+
 uint64 incRefcnt(void *pa)
 {
   acquire(&kmem.lock);
-  int pageidx = ((uint64)pa - (uint64)end) >> PGSHIFT;
-  printf(" 1 %d %d %d/%d\n", (uint64)pa, (uint64)end, pageidx, PGCNT);
+  // int pageidx = ((uint64)pa - (uint64)end) >> PGSHIFT;
+  int pageidx = (PGROUNDDOWN((uint64)pa) - KERNBASE) / PGSIZE;
+  // printf(" 1 %d %d %d/%d\n", (uint64)pa, (uint64)end, pageidx, PGCNT);
 
   if (pageidx < 0 || pageidx >= PGCNT)
   {
@@ -58,7 +67,7 @@ uint64 incRefcnt(void *pa)
     return 0;
   }
   kmem.refcnt[pageidx]++;
-  printf(" 1 pageidx = %d / refcnt : %d\n", pageidx, kmem.refcnt[pageidx]);
+  // printf(" 1 pageidx = %d / refcnt : %d\n", pageidx, kmem.refcnt[pageidx]);
   release(&kmem.lock);
   return 0;
 }
@@ -66,8 +75,10 @@ uint64 incRefcnt(void *pa)
 uint64 decRefcnt(void *pa)
 {
   acquire(&kmem.lock);
-  int pageidx = ((uint64)pa - (uint64)end) >> PGSHIFT;
-  printf("-1 %d %d %d/%d\n", (uint64)pa, (uint64)end, pageidx, PGCNT);
+  // int pageidx = ((uint64)pa - (uint64)end) >> PGSHIFT;
+  int pageidx = (PGROUNDDOWN((uint64)pa) - KERNBASE) / PGSIZE;
+
+  // printf("-1 %d %d %d/%d\n", (uint64)pa, (uint64)end, pageidx, PGCNT);
 
   if (pageidx < 0 || pageidx >= PGCNT)
   {
@@ -78,16 +89,33 @@ uint64 decRefcnt(void *pa)
 
     return 0;
   }
-  if (kmem.refcnt[pageidx] == 0)
-  {
-    printf("already freed\n");
-    release(&kmem.lock);
-    return -1;
-  }
-  kmem.refcnt[pageidx]--;
-  printf("-1 pageidx = %d / refcnt : %d\n", pageidx, kmem.refcnt[pageidx]);
+
+  if (kmem.refcnt[pageidx] > 0)
+    kmem.refcnt[pageidx]--;
+  // else
+  //   printf("already freed\n");
+
+  // printf("-1 pageidx = %d / refcnt : %d\n", pageidx, kmem.refcnt[pageidx]);
   release(&kmem.lock);
   return kmem.refcnt[pageidx];
+}
+
+void initRefcnt(void *pa)
+{
+  acquire(&kmem.lock);
+  int pageidx = (PGROUNDDOWN((uint64)pa) - KERNBASE) / PGSIZE;
+
+  if (pageidx < 0 || pageidx >= PGCNT)
+  {
+    printf("-1 pageidx error : %d %d\n", pageidx, PGCNT);
+    printf(" %d %d %d\n", (uint64)pa, (uint64)end, pageidx);
+
+    release(&kmem.lock);
+  }
+
+  kmem.refcnt[pageidx] = 0;
+
+  release(&kmem.lock);
 }
 
 // Free the page of physical memory pointed at by pa,
@@ -101,9 +129,7 @@ void kfree(void *pa)
   if (((uint64)pa % PGSIZE) != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
-  acquire(&kmem.lock);
   int ref = decRefcnt(pa);
-  release(&kmem.lock);
   if (ref > 0)
     return;
 
@@ -112,6 +138,7 @@ void kfree(void *pa)
 
   r = (struct run *)pa;
 
+  initRefcnt(pa);
   acquire(&kmem.lock);
   r->next = kmem.freelist;
   kmem.freelist = r;
@@ -129,10 +156,14 @@ kalloc(void)
   acquire(&kmem.lock);
   r = kmem.freelist;
   if (r)
+  {
     kmem.freelist = r->next;
-  int pageidx = ((uint64)r - (uint64)end) >> PGSHIFT;
-  if (pageidx >= 0 && pageidx < PGCNT)
-    kmem.refcnt[pageidx] = 1;
+    // int pageidx = ((uint64)r - (uint64)end) >> PGSHIFT;
+    int pageidx = (PGROUNDDOWN((uint64)r) - KERNBASE) / PGSIZE;
+
+    if (pageidx >= 0 && pageidx < PGCNT)
+      kmem.refcnt[pageidx] = 1;
+  }
   release(&kmem.lock);
 
   if (r)
